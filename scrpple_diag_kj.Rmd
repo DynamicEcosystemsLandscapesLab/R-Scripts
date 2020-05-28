@@ -1,0 +1,220 @@
+---
+title: "SCRAPPLE_maps_05282020"
+author: "kj"
+date: "5/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#set to root model folder
+wd<-"C:\\Users\\thebrain\\Dropbox\\DEAL_lab\\ZJR_landisruns\\CNRM-CM5rcp85\\CNRM-CM5rcp85\\"
+
+library(raster)
+library(rgeos)
+library(viridisLite)
+library(spatialEco)
+library(RColorBrewer)
+library(rasterVis)
+library(ggplot2)
+
+```
+
+## How many times did a cell burn in the simulation? Equivalent average return interval?
+
+Similar to burn frequency figure in Scrapple manuscript
+
+```{r}
+
+#bring this in so it can be used to resample the landis outputs
+sapp_ecoregion<-raster(paste0(wd,"11_Ecoregions.tif"))
+
+
+#get all of the yearly day of fire rasters
+year_rasts<-list.files(paste0(wd,"scrapple-fire\\"),pattern="day-of-fire")
+
+#create empty stack
+rastperyear<-stack()
+
+#for all the rasters that are read in turn to raster, add to stack
+for (raster in 1:length(year_rasts)){
+  
+year<-raster(paste0(wd,"scrapple-fire\\",year_rasts[raster]))
+rastperyear <-stack(rastperyear,year)
+  
+}
+
+#make reclassification matrix to get when if burned
+m <- c(0, 1, 0,  2, 365, 1)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+rc <- raster::reclassify(rastperyear, rclmat)
+
+#sum all of the 1's in a cell to get years burned acros landscape
+years_burned<-sum(rc)
+
+#do all the necessary things to landis outputs to get them computable
+extent(years_burned)<-extent(sapp_ecoregion)
+projection(years_burned)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+years_burned_newres<- resample(years_burned,sapp_ecoregion,method = 'ngb')
+
+plot(years_burned_newres,col=magma(10),main="Number of Years Burned")
+
+# Average Reccurrence Interval (1/Burn Freq)
+avg_ret_inter<-100/years_burned_newres
+
+plot(avg_ret_inter,col=viridis(10),colNA="black",main="Average Return Interval")
+```
+
+
+## Did a given cell burn? 
+
+BInary implification of above
+
+```{r}
+#so when we go to do our reclass burn area, we'll say 0 to 1 is actually  0
+#reclass burn frequency to just did it burn, or did it not burn? 
+m2 <- c(0, .5, 0,  1, 6, 1)
+rclmat2 <- matrix(m2, ncol=3, byrow=TRUE)
+burn_y_n<- raster::reclassify(years_burned, rclmat2)
+names(burn_y_n)<-"burns_y_n"
+
+plot(burn_y_n,col=magma(2),legend=FALSE,main="Cells that burned")
+```
+
+
+## Spread probability 
+
+0's (ie where no fires occurred in a given year) are removed. Average, Max, Min, and Range of Spread probability for a cell are mapped. 
+
+```{r}
+
+#get all of the yearly day of fire rasters
+year_spread_rasts<-list.files(paste0(wd,"scrapple-fire"),pattern="fire-spread-probability")
+
+yearly_spreadprob<-stack()
+
+
+#this doesn't not put them in temporal order because of file naming, would need to correct if shooting for time series plots
+for (raster in 1:length(year_spread_rasts)){
+
+year<-raster(paste0(wd,"scrapple-fire\\",year_spread_rasts[raster]))
+year[year == 0] <- NA
+yearly_spreadprob <-stack(yearly_spreadprob,year)
+
+}
+
+avg_spreadprob<-mean(yearly_spreadprob,na.rm=TRUE)
+max_spreadprob<-max(yearly_spreadprob,na.rm=TRUE)
+min_spreadprob<-min(yearly_spreadprob,na.rm=TRUE)
+
+extent(avg_spreadprob)<-extent(sapp_ecoregion)
+extent(max_spreadprob)<-extent(sapp_ecoregion)
+extent(min_spreadprob)<-extent(sapp_ecoregion)
+
+projection(avg_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+projection(max_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+projection(min_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+
+avgspread_newres<- raster::resample(avg_spreadprob,sapp_ecoregion,method = 'ngb')
+minspread_newres<- raster::resample(min_spreadprob,sapp_ecoregion,method = 'ngb')
+maxspread_newres<- raster::resample(max_spreadprob,sapp_ecoregion,method = 'ngb')
+
+dif_max_min<-maxspread_newres-minspread_newres
+
+plot(avgspread_newres,col=viridis(15), colNA="black",main="Average Fire Spread Probability")
+plot(maxspread_newres,col=viridis(15), colNA="black",main="Max Fire Spread Probability")
+plot(minspread_newres,col=viridis(15), colNA="black",main="Min Fire Spread Probability")
+plot(dif_max_min,col=viridis(15), colNA="black",main="Does a cell exhibit the same spread probability throughout the simulation (maximum-minimum)?")
+
+```
+
+## Fire Intensity 
+
+-Min/Max fire intensity across the landscape
+-How many max intens fires occur? 
+
+```{r}
+#average intensity
+
+year_int_rasts<-list.files(paste0(wd,"scrapple-fire"),pattern="fire-intensity")
+
+yearly_intens_rast<-stack()
+yearly_max_intens<-stack()
+
+for (raster in 1:length(year_int_rasts)){
+
+year<-raster(paste0(wd,"scrapple-fire","\\",year_int_rasts[raster]))
+year1<-year
+year1[year1!=3]<-NA
+yearly_intens_rast <-stack(yearly_intens_rast,year)
+yearly_max_intens<-stack(yearly_max_intens,year1)
+
+}
+
+
+#max intens
+max_intens<-max(yearly_intens_rast,na.rm=TRUE)
+
+#maximum intensity as factor, gettin ready for plotting
+  max_intens<-as.factor(max_intens)
+  rat <- levels(max_intens)[[1]]
+  rat[["intensity"]] <- c("nofire","intens 1","intens2", "intens3")
+  levels(max_intens) <- rat
+  num_levels<-nrow(levels(max_intens)[[1]])
+
+## Plot
+rasterVis::levelplot(max_intens, col.regions=rev(terrain.colors(num_levels)), xlab="", ylab="",main="Maximum Intensity Observed")
+  
+
+#count how many maximum intensity fires
+sum_maxintens<-sum(yearly_max_intens,na.rm=TRUE)/3
+
+plot(sum_maxintens,col=magma(6),main="Number of High Intensity (3) Fires")
+
+```
+
+
+## Percent of specific polygons that burned
+
+Not necessarily telling for the model, but a start if trying to extract/analyze specific management areas
+
+- There are 8 ownership classes shown here, but I believe there are only supposed to be 7 accoridng to the original dataset. May want to check creation/structure of "Ownership_Resampled.tif"?
+
+```{r}
+
+#not sure why there are 8 classes?
+#read in zjr ownership
+sapp_own<-raster(paste0(wd,"Ownership_Resampled.tif"))
+
+# #maximum intensity as factor, gettin ready for plotting
+#   sapp_own<-as.factor(sapp_own)
+#   rat <- levels(sapp_own)[[1]]
+#   rat[["ownership"]] <- c("federal","state","local", "family","corporate","other-private","tribal","unknown?")
+#   levels(sapp_own) <- rat
+#   num_levels<-nrow(levels(sapp_own)[[1]])
+# 
+# ## Plot
+# rasterVis::levelplot(sapp_own, col.regions=rev(terrain.colors(num_levels)), xlab="", ylab="",main="Ownership Type")
+#      
+
+#creating percent formula to pass to zonal.stats
+pct_burned <- function(x, p=1, na.rm = FALSE) {
+  if ( length(x[x == p]) < 1 ) return(0)
+  if ( length(x[x == p]) == length(x) ) return(1)
+  else return( length(x[x == p]) / length(x) )
+}
+
+#percentage of AOIs burned
+extent(sapp_own)<-extent(burn_y_n)
+projection(burn_y_n)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+burn_y_n_newres<- raster::resample(burn_y_n,sapp_own,method = 'ngb')
+
+#break stats up by sub-AOI
+stats_test_own<-as.data.frame(zonal(burn_y_n_newres, sapp_own,fun='pct_burned', digits=0, na.rm=TRUE))
+
+stats_test_own$owner<-c("federal","state","local", "family","corporate","other-private","tribal","unknown?")
+print(stats_test_own)
+
+```
