@@ -1,0 +1,404 @@
+---
+title: "SCRAPPLE_maps_05282020"
+author: "kj"
+date: "5/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#set to root model folder
+wd<-"C:\\Users\\zacha\\Desktop\\CNRM-CM5rcp85\\"
+
+library(raster)
+library(rgeos)
+library(viridisLite)
+library(spatialEco)
+library(RColorBrewer)
+library(rasterVis)
+library(ggplot2)
+library(dplyr)
+```
+
+## Annual Fire Weather Index 
+
+```{r}
+Climate<-read.csv(paste0(wd,"Climate-future-input-log.csv"))
+YearlyFWI<-Climate %>%
+            group_by(Year)%>%
+            summarise_at(vars(FWI),list(mean=mean,max=max))
+
+plot(seq(0,93),YearlyFWI$mean,type="l",col=magma(10),ylim=c(0,70),lwd=3.0,xlab="Time",ylab="FWI",main="Fire Weather Index")
+lines(seq(0,93),YearlyFWI$max,col="red",lwd=3.0)
+legend(0,70,legend=c("Mean FWI","Max FWI"),lty=c(1,1),lwd=c(3,3),col=c("black","red"))
+
+```
+
+## Days above 30 FWI 
+
+```{r,fig.width=10.0,fig.height=10.0}
+Climate$one<-1
+Climatetrun<-Climate[Climate$FWI>30,]
+YearlyFWICount<-Climatetrun %>%
+            group_by(Year)%>%
+            summarise_at(vars(one),list(sum=sum,max))
+plot(YearlyFWICount$Year,YearlyFWICount$sum,ylab="Days above FWI 30",type="l",col="red",lwd=3.0,
+     main="Days above FWI 30 For The Landscape")                        
+                         
+```
+
+## Total Landscape Statistics
+
+```{r,fig.width=10.0,fig.height=10.0}
+Scrrple_Sum=read.csv(paste0(wd,"scrapple-summary-log.csv"))
+plot(Scrrple_Sum$TotalBurnedSitesAccidental,type="l",ylim=c(0,5000),lwd=3.0,
+     xlab="Time",ylab="Sites Burned",col="blue",main="Sites Burned by Type")
+lines(Scrrple_Sum$TotalBurnedSitesLightning,type="l",lwd=3.0,
+     col="green")
+lines(Scrrple_Sum$TotalBurnedSitesRx,type="l",lwd=3.0,
+     col="orange")
+legend(0,5000,legend=c("Accidental","Rx","Ligthning"),lty=c(1,1),
+       lwd=c(3,3),col=c("blue","orange","green"))
+
+
+
+```
+
+
+```{r,fig.width=10.0,fig.height=10.0}
+plot(Scrrple_Sum$NumberFiresAccidental,type="l",ylim=c(0,5000),lwd=3.0,
+     xlab="Time",ylab="Ignitions Burned",col="blue",main="Ignitions burned by type")
+lines(Scrrple_Sum$NumberFiresLightning,type="l",lwd=3.0,
+     col="green")
+lines(Scrrple_Sum$NumberFiresRx,type="l",lwd=3.0,
+     col="orange")
+legend(0,5000,legend=c("Accidental","Rx","Ligthning"),lty=c(1,1),
+       lwd=c(3,3),col=c("blue","orange","green"))
+
+```
+
+## Comparison between historical and simulated ignition.
+
+```{r,fig.width=10.0,fig.height=10.0}
+FiresInAppsH<-read.csv(paste0(wd,"FiresInAppsHuman2.csv"))
+FiresInAppsH$Ones<-1
+#colnames(FiresInAppsH)
+FiresbyyearH<-FiresInAppsH %>%
+                group_by(FIRE_YEAR)%>%
+              summarise_at(vars(Ones),list(sum=sum))
+FiresInAppsL<-read.csv(paste0(wd,"FiresInAppsLightning2.csv"))
+FiresInAppsL$Ones<-1
+#colnames(FiresInAppsL)
+FiresbyyearL<-FiresInAppsL %>%
+                group_by(FIRE_YEAR)%>%
+              summarise_at(vars(Ones),list(sum=sum))
+data<-data.frame(name=c(rep("Simulation Accidental",length(Scrrple_Sum$NumberFiresAccidental)),
+                        rep("Historical Accidental",length(FiresbyyearH$sum)),
+                        rep("Simulation Lightening",length(Scrrple_Sum$NumberFiresLightning)),
+                        rep("Historical Lightening",length(FiresbyyearL$sum))),
+                 value=c(Scrrple_Sum$NumberFiresAccidental,FiresbyyearH$sum,
+                         Scrrple_Sum$NumberFiresLightning,FiresbyyearL$sum))
+#boxplot(Scrrple_Sum$NumberFiresAccidental,Firesbyyear$sum,names=c("Simulation","Historical"))
+Vio<-ggplot(data,aes(x=name,y=value,fill=name))+
+  geom_violin()+
+  stat_summary(fun=mean, geom="point", shape=23, size=2,col="black")+
+  scale_fill_brewer(palette="Dark2")+
+  scale_x_discrete(limits=c("Simulation Accidental", "Historical Accidental", 
+                              "Simulation Lightening","Historical Lightening"))
+  
+Vio
+```
+
+
+## Severity Landscape
+
+
+```{r,fig.width=10.0,fig.height=10.0}
+plot(Scrrple_Sum$NumberCellsSeverity1,type="l",ylim=c(0,5000),lwd=3.0,
+     xlab="Time",ylab="Ignitions Burned",col="grey")
+lines(Scrrple_Sum$NumberCellsSeverity2,type="l",lwd=3.0,
+     col="orange")
+lines(Scrrple_Sum$NumberCellsSeverity3,type="l",lwd=3.0,
+     col="red")
+legend(0,5000,legend=c("Low Severity","Mid Severity","High Severity"),lty=c(1,1),
+       lwd=c(3,3),col=c("grey","orange","red"))
+```
+
+
+
+## How many times did a cell burn in the simulation? Equivalent average return interval?
+
+Similar to burn frequency figure in Scrapple manuscript
+
+```{r,fig.width=10.0,fig.height=10.0}
+
+#bring this in so it can be used to resample the landis outputs
+sapp_ecoregion<-raster(paste0(wd,"11_Ecoregions.tif"))
+
+
+#get all of the yearly day of fire rasters
+year_rasts<-list.files(paste0(wd,"scrapple-fire\\"),pattern="day-of-fire")
+
+#create empty stack
+rastperyear<-stack()
+
+#for all the rasters that are read in turn to raster, add to stack
+for (raster in 1:length(year_rasts)){
+  
+year<-raster(paste0(wd,"scrapple-fire\\",year_rasts[raster]))
+rastperyear <-stack(rastperyear,year)
+  
+}
+
+#make reclassification matrix to get when if burned
+m <- c(0, 1, 0,  2, 365, 1)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+rc <- raster::reclassify(rastperyear, rclmat)
+
+#sum all of the 1's in a cell to get years burned acros landscape
+years_burned<-sum(rc)
+
+#do all the necessary things to landis outputs to get them computable
+extent(years_burned)<-extent(sapp_ecoregion)
+projection(years_burned)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+years_burned_newres<- resample(years_burned,sapp_ecoregion,method = 'ngb')
+
+plot(years_burned_newres,col=magma(10),main="Number of Years Burned")
+
+# Average Reccurrence Interval (1/Burn Freq)
+avg_ret_inter<-100/years_burned_newres
+#par(mar=c(1.0,1.0,1.0,1.0))
+plot(avg_ret_inter,col=viridis(10),colNA="black",main="Average Return Interval",axes=F,box=F)
+```
+
+
+## Did a given cell burn? 
+
+BInary implification of above
+
+```{r,fig.width=10.0,fig.height=10.0}
+#so when we go to do our reclass burn area, we'll say 0 to 1 is actually  0
+#reclass burn frequency to just did it burn, or did it not burn? 
+m2 <- c(0, .5, 0,  1, 6, 1)
+rclmat2 <- matrix(m2, ncol=3, byrow=TRUE)
+burn_y_n<- raster::reclassify(years_burned, rclmat2)
+names(burn_y_n)<-"burns_y_n"
+
+plot(burn_y_n,col=magma(2),legend=FALSE,main="Cells that burned",axes=F,box=F)
+```
+
+
+## Spread probability 
+
+0's (ie where no fires occurred in a given year) are removed. Average, Max, Min, and Range of Spread probability for a cell are mapped. 
+
+```{r,fig.width=10.0,fig.height=10.0}
+
+#get all of the yearly day of fire rasters
+year_spread_rasts<-list.files(paste0(wd,"scrapple-fire"),pattern="fire-spread-probability")
+
+yearly_spreadprob<-stack()
+
+
+#this doesn't not put them in temporal order because of file naming, would need to correct if shooting for time series plots
+for (raster in 1:length(year_spread_rasts)){
+
+year<-raster(paste0(wd,"scrapple-fire\\",year_spread_rasts[raster]))
+year[year == 0] <- NA
+yearly_spreadprob <-stack(yearly_spreadprob,year)
+
+}
+
+avg_spreadprob<-mean(yearly_spreadprob,na.rm=TRUE)
+max_spreadprob<-max(yearly_spreadprob,na.rm=TRUE)
+min_spreadprob<-min(yearly_spreadprob,na.rm=TRUE)
+
+extent(avg_spreadprob)<-extent(sapp_ecoregion)
+extent(max_spreadprob)<-extent(sapp_ecoregion)
+extent(min_spreadprob)<-extent(sapp_ecoregion)
+
+projection(avg_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+projection(max_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+projection(min_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+
+avgspread_newres<- raster::resample(avg_spreadprob,sapp_ecoregion,method = 'ngb')
+minspread_newres<- raster::resample(min_spreadprob,sapp_ecoregion,method = 'ngb')
+maxspread_newres<- raster::resample(max_spreadprob,sapp_ecoregion,method = 'ngb')
+
+dif_max_min<-maxspread_newres-minspread_newres
+
+plot(avgspread_newres,col=viridis(15), colNA="black",main="Average Fire Spread Probability",axes=F,box=F)
+plot(maxspread_newres,col=viridis(15), colNA="black",main="Max Fire Spread Probability",axes=F,box=F)
+plot(minspread_newres,col=viridis(15), colNA="black",main="Min Fire Spread Probability",axes=F,box=F)
+plot(dif_max_min,col=viridis(15), colNA="black",main="Does a cell exhibit the same spread probability throughout the simulation (maximum-minimum)?",axes=F,box=F)
+
+```
+
+## Fire Intensity 
+
+-Min/Max fire intensity across the landscape
+-How many max intens fires occur? 
+
+```{r}
+# #average intensity
+# 
+# year_int_rasts<-list.files(paste0(wd,"scrapple-fire"),pattern="fire-intensity")
+# 
+# yearly_intens_rast<-stack()
+# yearly_max_intens<-stack()
+# 
+# for (raster in 1:length(year_int_rasts)){
+# 
+# 
+# year1[]
+# year1<-year
+# year1[year1!=3]<-NA
+# 
+# 
+# }
+# yearly_intens_rast<-stack(paste0(wd,"scrapple-fire","\\",year_int_rasts))
+# yearly_max_intens<-yearly_intens_rast[yearly_intens_rast!=3]<-NA
+# 
+# #max intens
+# max_intens<-max(yearly_intens_rast,na.rm=TRUE)
+# 
+# #maximum intensity as factor, gettin ready for plotting
+#   max_intens<-as.factor(max_intens)
+#   rat <- levels(max_intens)[[1]]
+#   rat[["intensity"]] <- c("nofire","intens 1","intens2", "intens3")
+#   levels(max_intens) <- rat
+#   num_levels<-nrow(levels(max_intens)[[1]])
+# 
+# ## Plot
+# rasterVis::levelplot(max_intens, col.regions=rev(terrain.colors(num_levels)), xlab="", ylab="",main="Maximum Intensity Observed")
+#   
+# 
+# #count how many maximum intensity fires
+# sum_maxintens<-sum(yearly_max_intens,na.rm=TRUE)/3
+# 
+# plot(sum_maxintens,col=magma(6),main="Number of High Intensity (3) Fires")
+
+```
+
+
+## Percent of specific polygons that burned
+
+Not necessarily telling for the model, but a start if trying to extract/analyze specific management areas
+
+- There are 8 ownership classes shown here, but I believe there are only supposed to be 7 accoridng to the original dataset. May want to check creation/structure of "Ownership_Resampled.tif"?
+
+```{r}
+
+#not sure why there are 8 classes?
+#read in zjr ownership
+sapp_own<-raster(paste0(wd,"Ownership_Resampled.tif"))
+
+# #maximum intensity as factor, gettin ready for plotting
+#   sapp_own<-as.factor(sapp_own)
+#   rat <- levels(sapp_own)[[1]]
+#   rat[["ownership"]] <- c("federal","state","local", "family","corporate","other-private","tribal","unknown?")
+#   levels(sapp_own) <- rat
+#   num_levels<-nrow(levels(sapp_own)[[1]])
+# 
+# ## Plot
+# rasterVis::levelplot(sapp_own, col.regions=rev(terrain.colors(num_levels)), xlab="", ylab="",main="Ownership Type")
+#      
+
+#creating percent formula to pass to zonal.stats
+pct_burned <- function(x, p=1, na.rm = FALSE) {
+  if ( length(x[x == p]) < 1 ) return(0)
+  if ( length(x[x == p]) == length(x) ) return(1)
+  else return( length(x[x == p]) / length(x) )
+}
+
+#percentage of AOIs burned
+extent(sapp_own)<-extent(burn_y_n)
+projection(burn_y_n)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+burn_y_n_newres<- raster::resample(burn_y_n,sapp_own,method = 'ngb')
+
+#break stats up by sub-AOI
+stats_test_own<-as.data.frame(zonal(burn_y_n_newres, sapp_own,fun='pct_burned', digits=0, na.rm=TRUE))
+
+stats_test_own$owner<-c("federal","state","local", "family","corporate","other-private","tribal","unknown?")
+print(stats_test_own)
+
+```
+
+
+
+```{r}
+### Mean fire return interval
+
+# #percentage of AOIs burned
+# extent(sapp_own)<-extent(avg_ret_inter)
+# projection(burn_y_n)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+# avg_ret_inter_res<- raster::resample(avg_ret_inter,sapp_own,method = 'ngb')
+# avg_ret_inter_res[avg_ret_inter_res==Inf]<-NA
+# unique(avg_ret_inter_res)
+# #break stats up by sub-AOI
+# stats_test_own<-as.data.frame(zonal(avg_ret_inter_res, sapp_own,fun=mean, digits=0, na.rm=TRUE))
+# 
+# stats_test_own$owner<-c("federal","state","local", "family","corporate","other-private","tribal","unknown?")
+# print(stats_test_own)
+
+
+#avg_ret_inter
+```
+
+
+
+## Looking at suppression effectiveness
+
+```{r}
+sapp_Suppress<-raster(paste0(wd,"Suppressionmap2.tif"))
+extent(sapp_own)<-extent(avg_spreadprob)
+projection(avg_spreadprob)<-"+proj=utm +zone=17 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+avg_spreadprob_res<- raster::resample(avg_spreadprob,sapp_Suppress,method = 'ngb')
+avg_spreadprob_res[avg_spreadprob_res==0]<-NA
+#unique(avg_spreadprob)
+#break stats up by sub-AOI
+stats_test_supress<-as.data.frame(zonal(avg_spreadprob_res, sapp_Suppress,fun=mean, digits=0, na.rm=TRUE))
+
+stats_test_supress$Supression<-c("No Supression","One","Two","Three")
+print(stats_test_supress)
+
+```
+
+
+
+
+```{r,fig.width=10.0,fig.height=10.0}
+#display.brewer.all()
+Heat=brewer.pal(9,'YlOrRd')
+Heatramp<-colorRampPalette(Heat)
+Heatramp<-Heatramp(100)
+
+
+Ignition_type<-stack(paste0(wd,"scrapple-fire/",
+                     list.files(paste0(wd,"scrapple-fire/"),
+                                pattern="ignition-type-")))
+#### Accidental Ignition 2 
+Ignition2<-Ignition_type
+Ignition2[Ignition2 != 2]<-0
+SumofAccidental<-sum(Ignition2)
+plot(SumofAccidental,col=Heatramp,
+     zlim=c(1,10),axes=F,box=F,main="Number of Accidental Fires")
+SumofAccidental[SumofAccidental==0]<-.01
+#plot(100/SumofAccidental,col=Heatramp,zlim=c(0,200))
+
+#### Ignition Lightning 3 
+Ignition3<-Ignition_type
+Ignition3[Ignition3 != 3]<-0
+SumofOne<-sum(Ignition3)
+plot(SumofOne,col=Heatramp,zlim=c(1,10),axes=F,box=F,main="Number of Lightening Fires")
+
+#### Ignition RX 4 
+Ignition3<-Ignition_type
+Ignition3[Ignition3 != 4]<-0
+SumofOne<-sum(Ignition3,col=Heatramp)
+plot(SumofOne,col=Heatramp,zlim=c(1,40),axes=F,box=F,main="Number of Rx Fires")
+
+```
+
