@@ -1,0 +1,1 @@
+These R scripts are designed to derive the initial communities using the Riley et al. 2016 and 2019 dataset that interpolate FIA plots across the CONUS and derive the soil layers required for NECN from a gridded SSURGO product.
