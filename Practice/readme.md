@@ -53,8 +53,14 @@ plot(Own)
 #### Normalizing by day and area
 
 ``` r
+### Plain text description of your code. 
 Own[Own$Ownership_Resampled,]<-Own[Own$Ownership_Resampled,]*365/10000
+####plot the data 
 plot(Own)
 ```
 
 ![](Practice_github-upload_files/figure-gfm/pressure-1.png)<!-- -->
+
+``` r
+### write the data. 
+```
